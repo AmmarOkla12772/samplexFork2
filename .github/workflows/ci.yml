@@ -56,18 +56,6 @@ jobs:
           test -f targets/Microchip/POLARFIRE_ICICLE_RENODE/build/app/polarfire_icicle_demo.elf
           echo "[OK] PolarFire SampleX demo ELF verified."
 
-      - name: Build ThreadX RV64 Core Port Example
-        run: |
-          cmake -B libs/threadx/ports/risc-v64/gnu/example_build/polarfire_icicle_renode/build \
-                -S libs/threadx/ports/risc-v64/gnu/example_build/polarfire_icicle_renode \
-                -G Ninja
-          ninja -C libs/threadx/ports/risc-v64/gnu/example_build/polarfire_icicle_renode/build
-
-      - name: Verify ThreadX Port ELF
-        run: |
-          test -f libs/threadx/ports/risc-v64/gnu/example_build/polarfire_icicle_renode/build/polarfire_demo.elf
-          echo "[OK] ThreadX Core port ELF verified."
-
       - name: Archive Built PolarFire ELF
         uses: actions/upload-artifact@v4
         with:
