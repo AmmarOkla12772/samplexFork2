@@ -1,0 +1,109 @@
+name: SampleX CI Verification Pipeline
+
+on:
+  push:
+    branches: [ main, master, 'feat/**' ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-arm-stm32:
+    name: Build STM32 NUCLEO_F401RE (ARM Cortex-M4)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Build Tools and ARM Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi
+
+      - name: Build NUCLEO_F401RE Target
+        run: |
+          bash targets/STMicroelectronics/NUCLEO_F401RE/scripts/build.sh --rebuild
+
+      - name: Verify ELF Binary Generation
+        run: |
+          test -f targets/STMicroelectronics/NUCLEO_F401RE/build/app/nucleo_f401re.elf
+          echo "[OK] NUCLEO_F401RE ELF binary verified successfully."
+
+  build-riscv-polarfire:
+    name: Build PolarFire SoC Icicle Kit (64-Bit RISC-V)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install CMake and Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+
+      - name: Install Pinned xPack RISC-V GCC 14.2.0
+        uses: xpack-dev-tools/riscv-none-elf-gcc-action@v14.2.0-1
+
+      - name: Build SampleX PolarFire Condition-Monitoring Demo
+        run: |
+          bash targets/Microchip/POLARFIRE_ICICLE_RENODE/scripts/build.sh --rebuild
+
+      - name: Verify SampleX Demo ELF
+        run: |
+          test -f targets/Microchip/POLARFIRE_ICICLE_RENODE/build/app/polarfire_icicle_demo.elf
+          echo "[OK] PolarFire SampleX demo ELF verified."
+
+      - name: Build ThreadX RV64 Core Port Example
+        run: |
+          cmake -B libs/threadx/ports/risc-v64/gnu/example_build/polarfire_icicle_renode/build \
+                -S libs/threadx/ports/risc-v64/gnu/example_build/polarfire_icicle_renode \
+                -G Ninja
+          ninja -C libs/threadx/ports/risc-v64/gnu/example_build/polarfire_icicle_renode/build
+
+      - name: Verify ThreadX Port ELF
+        run: |
+          test -f libs/threadx/ports/risc-v64/gnu/example_build/polarfire_icicle_renode/build/polarfire_demo.elf
+          echo "[OK] ThreadX Core port ELF verified."
+
+      - name: Archive Built PolarFire ELF
+        uses: actions/upload-artifact@v4
+        with:
+          name: polarfire-demo-elf
+          path: targets/Microchip/POLARFIRE_ICICLE_RENODE/build/app/polarfire_icicle_demo.elf
+          retention-days: 1
+
+  test-polarfire-renode:
+    name: Headless Renode Emulation & Assertion Test
+    needs: build-riscv-polarfire
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download Built PolarFire ELF
+        uses: actions/download-artifact@v4
+        with:
+          name: polarfire-demo-elf
+          path: targets/Microchip/POLARFIRE_ICICLE_RENODE/build/app
+
+      - name: Install Portable Renode Emulation Environment
+        run: |
+          wget -q https://builds.renode.io/renode-latest.linux-portable.tar.gz
+          mkdir -p $HOME/renode
+          tar -xzf renode-latest.linux-portable.tar.gz -C $HOME/renode --strip-components=1
+          rm renode-latest.linux-portable.tar.gz
+          echo "$HOME/renode" >> $GITHUB_PATH
+
+      - name: Run Deterministic Headless Renode Test
+        run: |
+          python3 targets/Microchip/POLARFIRE_ICICLE_RENODE/scripts/test_renode.py

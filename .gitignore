@@ -22,10 +22,5 @@ CTestTestfile.cmake
 *.map
 #*.a
 *.htm
-*.gdb
-*.log
 shared/lib/netxduo/*
 shared/lib/threadx/*
-STMicroelectronics/STM32F767ZI-Nucleo/lib/stm32cubef7/
-STMicroelectronics/STM32F767ZI-Nucleo/lib/netxduo/
-
