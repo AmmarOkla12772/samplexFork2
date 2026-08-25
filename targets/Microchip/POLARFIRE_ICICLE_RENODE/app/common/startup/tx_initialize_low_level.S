@@ -22,6 +22,15 @@ __tx_free_memory_start:
     .extern _tx_thread_context_restore
 
 trap_entry:
+    /* Read trap cause, program counter, and trap value */
+    csrr    a0, mcause
+    csrr    a1, mepc
+    csrr    a2, mtval
+
+    /* Check if trap is synchronous (bit 63 is 0) */
+    bgez    a0, .synchronous_fault
+
+    /* Asynchronous Interrupt (CLINT Timer) - Save ThreadX context */
 #if defined(__riscv_float_abi_single) || defined(__riscv_float_abi_double)
     addi    sp, sp, -520                 // 65*8 with floating point
 #else
@@ -45,6 +54,17 @@ trap_entry:
 _err_hang:
     wfi
     j       _err_hang
+
+.synchronous_fault:
+    /* Synchronous exception / fatal trap: Call trap_handler directly */
+    addi    sp, sp, -8
+    sd      ra, 0(sp)
+    call    trap_handler
+    ld      ra, 0(sp)
+    addi    sp, sp, 8
+.halt_loop:
+    wfi
+    j       .halt_loop
 
     .section .text
     .global  _tx_initialize_low_level
