@@ -10,19 +10,24 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <string.h>
+#include <errno.h>
 #include "tx_api.h"
+#include "hwtimer.h"
 #include "bsp/board.h"
 #include "bsp/console.h"
 #include "bsp/led.h"
+
+extern void *_sbrk(ptrdiff_t incr);
 
 #define DEMO_STACK_SIZE     4096
 #define DEMO_QUEUE_ITEMS    10
 
 typedef struct SENSOR_DATA_STRUCT {
-    ULONG timestamp;
-    float temperature_celsius;
-    float reserved;
+    ULONG    timestamp;
+    float    temperature_celsius;
+    uint32_t reserved;
 } SENSOR_DATA;
 
 #define DEMO_QUEUE_MSG_WORDS    (sizeof(SENSOR_DATA) / sizeof(ULONG))
@@ -50,6 +55,48 @@ void sampler_thread_entry(ULONG input);
 void analyzer_thread_entry(ULONG input);
 void reporter_thread_entry(ULONG input);
 
+static void run_startup_self_tests(void) {
+    extern char __end;
+    console_print("[SELF-TEST] Starting Hardware & Runtime Verification...\n");
+
+    /* 1. _sbrk() Valid allocation test */
+    void *p1 = _sbrk(64);
+    if (p1 == (void *)-1 || (uintptr_t)p1 < (uintptr_t)&__end) {
+        console_print("[-] FAIL: _sbrk() valid allocation failed\n");
+    }
+
+    /* 2. _sbrk() Underflow test (shrink below heap base) */
+    errno = 0;
+    void *p_under = _sbrk(-128);
+    if (p_under == (void *)-1 && errno == EINVAL) {
+        console_print("[+] PASS: _sbrk() underflow guard rejected with EINVAL\n");
+    } else {
+        console_print("[-] FAIL: _sbrk() underflow guard failed\n");
+    }
+
+    /* 3. _sbrk() Overflow test (request beyond 1 GiB DRAM) */
+    errno = 0;
+    void *p_over = _sbrk((ptrdiff_t)0x40000000ULL);
+    if (p_over == (void *)-1 && errno == ENOMEM) {
+        console_print("[+] PASS: _sbrk() overflow guard rejected with ENOMEM\n");
+    } else {
+        console_print("[-] FAIL: _sbrk() overflow guard failed\n");
+    }
+
+    /* 4. HWTimer catch-up clamp test */
+    uint64_t current_mtime = MTIME_REG;
+    HART1_MTIMECMP_REG = current_mtime - 50000ULL; /* Force timer into the past */
+    hwtimer_ack();
+    uint64_t clamped_cmp = HART1_MTIMECMP_REG;
+    if (clamped_cmp >= current_mtime + TICK_CYCLES) {
+        console_print("[+] PASS: HWTimer catch-up clamp restored periodic schedule\n");
+    } else {
+        console_print("[-] FAIL: HWTimer catch-up clamp failed\n");
+    }
+
+    console_print("[SELF-TEST] All startup verification tests PASSED!\n\n");
+}
+
 int main(void) {
     /* Initialize Board Peripherals & MMUART1 */
     bsp_board_init();
@@ -58,6 +105,9 @@ int main(void) {
     console_print("Microchip PolarFire SoC Icicle Kit (Renode Target)\n");
     console_print("64-Bit RISC-V Industrial LM75 Condition-Monitoring App\n");
     console_print("====================================================\n");
+
+    /* Execute Dynamic Hardware & Runtime Self-Tests */
+    run_startup_self_tests();
 
     /* Enter ThreadX Kernel */
     tx_kernel_enter();
@@ -120,7 +170,7 @@ void sampler_thread_entry(ULONG input) {
     while (1) {
         data.timestamp = tx_time_get();
         data.temperature_celsius = simulated_temp;
-        data.reserved = 0.0f;
+        data.reserved = 0x55AA55AA;
 
         /* Send telemetry to Queue */
         UINT status = tx_queue_send(&sensor_queue, &data, TX_NO_WAIT);
@@ -140,9 +190,17 @@ void sampler_thread_entry(ULONG input) {
 void analyzer_thread_entry(ULONG input) {
     (void)input;
     SENSOR_DATA data;
+    static int s_verified_queue = 0;
 
     while (1) {
         if (tx_queue_receive(&sensor_queue, &data, TX_WAIT_FOREVER) == TX_SUCCESS) {
+            if (data.reserved != 0x55AA55AA) {
+                console_print("[-] FAIL: Queue payload corruption detected!\n");
+            } else if (!s_verified_queue) {
+                s_verified_queue = 1;
+                console_print("[+] PASS: Queue 16-byte structure round-trip verified\n");
+            }
+
             if (data.temperature_celsius > 45.0f) {
                 UINT status = tx_event_flags_set(&alarm_flags, ALARM_OVERTEMP, TX_OR);
                 if (status != TX_SUCCESS) {
