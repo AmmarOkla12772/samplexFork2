@@ -76,6 +76,7 @@ def run_test():
     reader_t.start()
     
     output_lines = []
+    found_selftests = False
     found_ticks = False
     found_alarm = False
     start_time = time.time()
@@ -87,12 +88,14 @@ def run_test():
                 line = output_q.get(timeout=0.1)
                 output_lines.append(line)
                 print(line, end="")
-                if "ThreadX Ticks" in line:
+                if "[SELF-TEST] All startup verification tests PASSED!" in line:
+                    found_selftests = True
+                if "Ticks:" in line:
                     found_ticks = True
                 if "OVERTEMP ALARM TRIGGERED" in line:
                     found_alarm = True
-                if found_ticks and found_alarm:
-                    print("\n[+] SUCCESS: Both ThreadX system ticks and LM75 overtemperature alarm detected!")
+                if found_selftests and found_ticks and found_alarm:
+                    print("\n[+] SUCCESS: Startup self-tests, ThreadX ticks, and LM75 alarm all verified!")
                     break
             except queue.Empty:
                 if proc.poll() is not None:

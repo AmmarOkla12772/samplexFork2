@@ -55,13 +55,20 @@ void sampler_thread_entry(ULONG input);
 void analyzer_thread_entry(ULONG input);
 void reporter_thread_entry(ULONG input);
 
+static volatile ULONG s_sampler_runs = 0;
+static volatile ULONG s_analyzer_runs = 0;
+static volatile ULONG s_reporter_runs = 0;
+
 static void run_startup_self_tests(void) {
     extern char __end;
+    char num_buf[128];
     console_print("[SELF-TEST] Starting Hardware & Runtime Verification...\n");
 
     /* 1. _sbrk() Valid allocation test */
     void *p1 = _sbrk(64);
-    if (p1 == (void *)-1 || (uintptr_t)p1 < (uintptr_t)&__end) {
+    if (p1 != (void *)-1 && (uintptr_t)p1 >= (uintptr_t)&__end) {
+        console_print("[+] PASS: _sbrk() valid allocation returned base pointer\n");
+    } else {
         console_print("[-] FAIL: _sbrk() valid allocation failed\n");
     }
 
@@ -84,12 +91,20 @@ static void run_startup_self_tests(void) {
     }
 
     /* 4. HWTimer catch-up clamp test */
+    MTIME_REG = 100000ULL; /* Set known baseline mtime */
     uint64_t current_mtime = MTIME_REG;
-    HART1_MTIMECMP_REG = current_mtime - 50000ULL; /* Force timer into the past */
+    uint64_t past_cmp = 20000ULL; /* In the past by 80,000 cycles (8 missed ticks) */
+    HART1_MTIMECMP_REG = past_cmp;
     hwtimer_ack();
     uint64_t clamped_cmp = HART1_MTIMECMP_REG;
-    if (clamped_cmp >= current_mtime + TICK_CYCLES) {
-        console_print("[+] PASS: HWTimer catch-up clamp restored periodic schedule\n");
+    if (clamped_cmp == current_mtime + TICK_CYCLES) {
+        snprintf(num_buf, sizeof(num_buf),
+                 "[+] PASS: HWTimer catch-up (mtime=%llu, past_cmp=%llu -> clamped_cmp=%llu == mtime + %llu)\n",
+                 (unsigned long long)current_mtime,
+                 (unsigned long long)past_cmp,
+                 (unsigned long long)clamped_cmp,
+                 (unsigned long long)TICK_CYCLES);
+        console_print(num_buf);
     } else {
         console_print("[-] FAIL: HWTimer catch-up clamp failed\n");
     }
@@ -168,6 +183,7 @@ void sampler_thread_entry(ULONG input) {
     float simulated_temp = 25.0f;
 
     while (1) {
+        s_sampler_runs++;
         data.timestamp = tx_time_get();
         data.temperature_celsius = simulated_temp;
         data.reserved = 0x55AA55AA;
@@ -194,6 +210,7 @@ void analyzer_thread_entry(ULONG input) {
 
     while (1) {
         if (tx_queue_receive(&sensor_queue, &data, TX_WAIT_FOREVER) == TX_SUCCESS) {
+            s_analyzer_runs++;
             if (data.reserved != 0x55AA55AA) {
                 console_print("[-] FAIL: Queue payload corruption detected!\n");
             } else if (!s_verified_queue) {
@@ -216,13 +233,17 @@ void analyzer_thread_entry(ULONG input) {
 
 void reporter_thread_entry(ULONG input) {
     (void)input;
-    char msg_buf[128];
+    char msg_buf[160];
     ULONG actual_flags;
 
     while (1) {
+        s_reporter_runs++;
         snprintf(msg_buf, sizeof(msg_buf),
-                 "[Monitor] ThreadX Ticks: %lu | Telemetry Pipeline Active | Queues OK\n",
-                 (unsigned long)tx_time_get());
+                 "[Monitor] Ticks: %lu | Active Runs: Sampler=%lu, Analyzer=%lu, Reporter=%lu\n",
+                 (unsigned long)tx_time_get(),
+                 (unsigned long)s_sampler_runs,
+                 (unsigned long)s_analyzer_runs,
+                 (unsigned long)s_reporter_runs);
         console_print(msg_buf);
 
         if (tx_event_flags_get(&alarm_flags, ALARM_OVERTEMP, TX_OR_CLEAR, &actual_flags, TX_NO_WAIT) == TX_SUCCESS) {
