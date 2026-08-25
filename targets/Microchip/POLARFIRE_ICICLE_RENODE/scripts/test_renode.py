@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+#
+# Copyright (c) 2026 Eclipse ThreadX contributors
+#
+# This program and the accompanying materials are made available
+# under the terms of the MIT license which is available at
+# https://opensource.org/license/mit.
+#
+# SPDX-License-Identifier: MIT
+#
+
+"""
+Headless Renode Verification Test for PolarFire SoC Icicle Kit ThreadX Demo
+"""
+
+import os
+import sys
+import time
+import subprocess
+import shutil
+import threading
+import queue
+
+def find_renode():
+    # Check PATH first
+    renode_bin = shutil.which("renode")
+    if renode_bin:
+        return renode_bin
+    
+    # Common Windows locations
+    win_paths = [
+        r"C:\Program Files\Renode\renode.exe",
+        os.path.expanduser(r"~\AppData\Local\Programs\Renode\renode.exe")
+    ]
+    for path in win_paths:
+        if os.path.isfile(path):
+            return path
+            
+    return "renode"
+
+def reader_thread_fn(pipe, q):
+    try:
+        for line in iter(pipe.readline, ''):
+            q.put(line)
+    except Exception:
+        pass
+    finally:
+        pipe.close()
+
+def run_test():
+    renode = find_renode()
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    target_dir = os.path.dirname(script_dir)
+    resc_path = os.path.join(target_dir, "renode", "polarfire_demo.resc").replace("\\", "/")
+    
+    print(f"[*] Starting headless Renode test using: {renode}")
+    print(f"[*] Loading script: {resc_path}")
+    
+    cmd = [
+        renode,
+        "--plain",
+        "--disable-gui",
+        "-e", f"include @{resc_path}"
+    ]
+    
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1
+    )
+    
+    output_q = queue.Queue()
+    reader_t = threading.Thread(target=reader_thread_fn, args=(proc.stdout, output_q), daemon=True)
+    reader_t.start()
+    
+    output_lines = []
+    found_ticks = False
+    found_alarm = False
+    start_time = time.time()
+    timeout_seconds = 25.0
+    
+    try:
+        while time.time() - start_time < timeout_seconds:
+            try:
+                line = output_q.get(timeout=0.1)
+                output_lines.append(line)
+                print(line, end="")
+                if "ThreadX Ticks" in line:
+                    found_ticks = True
+                if "OVERTEMP ALARM TRIGGERED" in line:
+                    found_alarm = True
+                if found_ticks and found_alarm:
+                    print("\n[+] SUCCESS: Both ThreadX system ticks and LM75 overtemperature alarm detected!")
+                    break
+            except queue.Empty:
+                if proc.poll() is not None:
+                    break
+    finally:
+        try:
+            proc.terminate()
+            proc.wait(timeout=2)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            
+    if found_ticks and found_alarm:
+        print("[+] Renode headless test PASSED.")
+        sys.exit(0)
+    else:
+        print(f"\n[-] FAILED: Timed out waiting for expected telemetry. (found_ticks={found_ticks}, found_alarm={found_alarm})")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    run_test()
