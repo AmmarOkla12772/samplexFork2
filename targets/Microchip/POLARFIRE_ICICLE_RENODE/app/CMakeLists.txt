@@ -48,6 +48,11 @@ target_include_directories(polarfire_icicle_demo
         ${SAMPLEX_ROOT_DIR}/bsp/include
 )
 
+option(ENABLE_FAULT_INJECTION "Enable deliberate synchronous fault injection for trap handler testing" OFF)
+if(ENABLE_FAULT_INJECTION)
+    target_compile_definitions(polarfire_icicle_demo PRIVATE TEST_FAULT_INJECTION=1)
+endif()
+
 target_link_libraries(polarfire_icicle_demo
     PRIVATE
         -Wl,--start-group

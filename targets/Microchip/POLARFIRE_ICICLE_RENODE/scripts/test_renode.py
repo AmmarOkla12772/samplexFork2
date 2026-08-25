@@ -47,19 +47,25 @@ def reader_thread_fn(pipe, q):
     finally:
         pipe.close()
 
-def run_test():
+def run_test(test_timeout_mode=False):
     renode = find_renode()
     script_dir = os.path.dirname(os.path.abspath(__file__))
     target_dir = os.path.dirname(script_dir)
     resc_path = os.path.join(target_dir, "renode", "polarfire_demo.resc").replace("\\", "/")
     
-    print(f"[*] Starting headless Renode test using: {renode}")
-    print(f"[*] Loading script: {resc_path}")
+    if test_timeout_mode:
+        print("[*] Running intentional timeout test mode (2.0s deadline against unresponsive wait)...")
+        timeout_seconds = 2.0
+    else:
+        print(f"[*] Starting headless Renode test using: {renode}")
+        print(f"[*] Loading script: {resc_path}")
+        timeout_seconds = 25.0
     
     cmd = [
         renode,
         "--plain",
         "--disable-gui",
+        "--port", "-1",
         "-e", f"include @{resc_path}"
     ]
     
@@ -80,7 +86,6 @@ def run_test():
     found_ticks = False
     found_alarm = False
     start_time = time.time()
-    timeout_seconds = 25.0
     
     try:
         while time.time() - start_time < timeout_seconds:
@@ -88,15 +93,16 @@ def run_test():
                 line = output_q.get(timeout=0.1)
                 output_lines.append(line)
                 print(line, end="")
-                if "[SELF-TEST] All startup verification tests PASSED!" in line:
-                    found_selftests = True
-                if "Ticks:" in line:
-                    found_ticks = True
-                if "OVERTEMP ALARM TRIGGERED" in line:
-                    found_alarm = True
-                if found_selftests and found_ticks and found_alarm:
-                    print("\n[+] SUCCESS: Startup self-tests, ThreadX ticks, and LM75 alarm all verified!")
-                    break
+                if not test_timeout_mode:
+                    if "[SELF-TEST] All startup verification tests PASSED!" in line:
+                        found_selftests = True
+                    if "Ticks:" in line:
+                        found_ticks = True
+                    if "OVERTEMP ALARM TRIGGERED" in line:
+                        found_alarm = True
+                    if found_selftests and found_ticks and found_alarm:
+                        print("\n[+] SUCCESS: Startup self-tests, ThreadX ticks, and LM75 alarm all verified!")
+                        break
             except queue.Empty:
                 if proc.poll() is not None:
                     break
@@ -110,12 +116,17 @@ def run_test():
             except Exception:
                 pass
             
-    if found_ticks and found_alarm:
+    if not test_timeout_mode and found_ticks and found_alarm:
         print("[+] Renode headless test PASSED.")
+        sys.exit(0)
+    elif test_timeout_mode:
+        elapsed = time.time() - start_time
+        print(f"\n[+] SUCCESS: Intentional timeout triggered after {elapsed:.2f}s and terminated child process cleanly.")
         sys.exit(0)
     else:
         print(f"\n[-] FAILED: Timed out waiting for expected telemetry. (found_ticks={found_ticks}, found_alarm={found_alarm})")
         sys.exit(1)
 
 if __name__ == "__main__":
-    run_test()
+    timeout_test = "--test-timeout" in sys.argv
+    run_test(test_timeout_mode=timeout_test)

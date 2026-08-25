@@ -124,6 +124,11 @@ int main(void) {
     /* Execute Dynamic Hardware & Runtime Self-Tests */
     run_startup_self_tests();
 
+#ifdef TEST_FAULT_INJECTION
+    console_print("[FAULT-TEST] Injecting deliberate synchronous illegal instruction...\n");
+    __asm__ volatile(".word 0x00000000"); /* Illegal instruction to exercise trap_handler */
+#endif
+
     /* Enter ThreadX Kernel */
     tx_kernel_enter();
 

@@ -28,6 +28,10 @@ _start:
     .option pop
     la      sp, __stack_top
 
+    /* Set Machine Trap-Vector Base Address to trap_entry */
+    la      t0, trap_entry
+    csrw    mtvec, t0
+
     /* Note: In Renode direct ELF loading, LMA == VMA so .data is already placed in DRAM.
      * On physical hardware booting via HSS, HSS loads sections before jumping to _start. */
     /* Zero-initialize .bss section */
