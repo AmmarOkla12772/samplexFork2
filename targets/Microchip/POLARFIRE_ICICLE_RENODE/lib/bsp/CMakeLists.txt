@@ -15,6 +15,7 @@ add_library(polarfire_bsp STATIC
     src/bsp_console.c
     src/board.c
     src/uart.c
+    src/plic.c
     src/hwtimer.c
     src/trap.c
 )

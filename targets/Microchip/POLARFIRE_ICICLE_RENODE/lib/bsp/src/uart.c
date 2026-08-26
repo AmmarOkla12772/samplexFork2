@@ -21,8 +21,16 @@
 void uart_init(void) {
     /* 8 data bits, 1 stop bit, no parity (8-N-1) */
     REG_LCR = 0x03;
-    /* Disable interrupts initially */
-    REG_IER = 0x00;
+    /* Enable Received Data Available (ERBFI, bit 0) interrupt for PLIC IRQ 91 */
+    REG_IER = 0x01;
+}
+
+int uart_has_rx(void) {
+    return (REG_LSR & 0x01); /* Bit 0: Data Ready */
+}
+
+char uart_getc(void) {
+    return (char)(REG_RBR & 0xFF);
 }
 
 void uart_putc(char ch) {

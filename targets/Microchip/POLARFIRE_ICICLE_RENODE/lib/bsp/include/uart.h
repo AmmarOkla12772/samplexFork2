@@ -20,5 +20,7 @@ void uart_init(void);
 void uart_putc(char ch);
 void uart_puts(const char *str);
 void uart_write(const char *data, size_t len);
+int uart_has_rx(void);
+char uart_getc(void);
 
 #endif /* POLARFIRE_UART_H */

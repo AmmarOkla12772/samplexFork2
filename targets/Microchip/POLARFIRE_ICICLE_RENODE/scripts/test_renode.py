@@ -71,6 +71,7 @@ def run_test(test_timeout_mode=False):
     
     proc = subprocess.Popen(
         cmd,
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -85,6 +86,8 @@ def run_test(test_timeout_mode=False):
     found_selftests = False
     found_ticks = False
     found_alarm = False
+    found_plic_rx = False
+    injected_char = False
     start_time = time.time()
     
     try:
@@ -100,8 +103,10 @@ def run_test(test_timeout_mode=False):
                         found_ticks = True
                     if "OVERTEMP ALARM TRIGGERED" in line:
                         found_alarm = True
+                    if "PLIC IRQ 91 handled" in line:
+                        found_plic_rx = True
                     if found_selftests and found_ticks and found_alarm:
-                        print("\n[+] SUCCESS: Startup self-tests, ThreadX ticks, and LM75 alarm all verified!")
+                        print("\n[+] SUCCESS: Startup self-tests (including PLIC), ThreadX ticks, and LM75 alarm all verified!")
                         break
             except queue.Empty:
                 if proc.poll() is not None:

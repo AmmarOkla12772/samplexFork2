@@ -9,8 +9,12 @@
  */
 
 #include "hwtimer.h"
+#include "plic.h"
 
 void board_init(void) {
     /* Initialize 64-bit MTIME machine timer (10ms tick interval) */
     hwtimer_init();
+
+    /* Initialize PLIC (Hart 1 Context 2, enable MMUART1 IRQ 91) */
+    plic_init();
 }

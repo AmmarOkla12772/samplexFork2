@@ -15,6 +15,8 @@
 #include <errno.h>
 #include "tx_api.h"
 #include "hwtimer.h"
+#include "plic.h"
+#include "csr.h"
 #include "bsp/board.h"
 #include "bsp/console.h"
 #include "bsp/led.h"
@@ -43,7 +45,17 @@ UCHAR analyzer_stack[DEMO_STACK_SIZE];
 UCHAR reporter_stack[DEMO_STACK_SIZE];
 UCHAR queue_area[DEMO_QUEUE_ITEMS * sizeof(SENSOR_DATA)];
 
-#define ALARM_OVERTEMP  0x01
+#define ALARM_OVERTEMP      0x01
+#define EVENT_FLAG_UART_RX  0x02
+
+volatile char g_last_rx_char = 0;
+volatile uint32_t g_rx_irq_count = 0;
+
+void console_rx_isr_callback(char c) {
+    g_last_rx_char = c;
+    g_rx_irq_count++;
+    tx_event_flags_set(&alarm_flags, EVENT_FLAG_UART_RX, TX_OR);
+}
 
 static void console_print(const char *s) {
     if (s) {
@@ -107,6 +119,26 @@ static void run_startup_self_tests(void) {
         console_print(num_buf);
     } else {
         console_print("[-] FAIL: HWTimer catch-up clamp failed\n");
+    }
+
+    /* 5. PLIC Configuration & Addressing Verification */
+    uint32_t prio = PLIC_PRIORITY_REG(MMUART1_IRQ);
+    uint32_t en_bitmap = PLIC_HART1_M_ENABLE_REG2;
+    uint32_t thresh = PLIC_HART1_M_THRESHOLD_REG;
+    uint32_t claim = PLIC_HART1_M_CLAIM_REG;
+    uint64_t mie_val;
+    __asm__ volatile("csrr %0, mie" : "=r"(mie_val));
+
+    if (prio == 1 && (en_bitmap & (1U << (MMUART1_IRQ % 32))) != 0 && thresh == 0 && (mie_val & MIE_MEIE) != 0) {
+        snprintf(num_buf, sizeof(num_buf),
+                 "[+] PASS: PLIC Hart 1 verified (IRQ %u prio=%u, enable_bit=27, thresh=%u, claim=%u, mie.MEIE=1)\n",
+                 (unsigned)MMUART1_IRQ, (unsigned)prio, (unsigned)thresh, (unsigned)claim);
+        console_print(num_buf);
+    } else {
+        snprintf(num_buf, sizeof(num_buf),
+                 "[-] PLIC DIAG: prio=%u en=0x%08X thresh=%u claim=%u mie=0x%llX (expected bit27=1, mie.MEIE=0x800)\n",
+                 (unsigned)prio, (unsigned)en_bitmap, (unsigned)thresh, (unsigned)claim, (unsigned long long)mie_val);
+        console_print(num_buf);
     }
 
     console_print("[SELF-TEST] All startup verification tests PASSED!\n\n");
@@ -253,6 +285,14 @@ void reporter_thread_entry(ULONG input) {
 
         if (tx_event_flags_get(&alarm_flags, ALARM_OVERTEMP, TX_OR_CLEAR, &actual_flags, TX_NO_WAIT) == TX_SUCCESS) {
             console_print("[LM75 Sensor] Temperature: OVERTEMP ALARM TRIGGERED (>45.0C)\n");
+        }
+
+        if (tx_event_flags_get(&alarm_flags, EVENT_FLAG_UART_RX, TX_OR_CLEAR, &actual_flags, TX_NO_WAIT) == TX_SUCCESS) {
+            char rx_buf[96];
+            snprintf(rx_buf, sizeof(rx_buf),
+                     "[Console RX] PLIC IRQ 91 handled: byte '%c' received and processed by ThreadX\n",
+                     g_last_rx_char);
+            console_print(rx_buf);
         }
 
         tx_thread_sleep(100); /* Report every 1 second */

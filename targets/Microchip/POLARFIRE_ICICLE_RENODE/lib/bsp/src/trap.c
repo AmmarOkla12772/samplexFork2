@@ -10,9 +10,11 @@
 
 #include <stdint.h>
 #include "hwtimer.h"
+#include "plic.h"
+#include "uart.h"
 
 extern void _tx_timer_interrupt(void);
-extern void uart_puts(const char *str);
+extern void console_rx_isr_callback(char c);
 
 static void print_hex64(uint64_t val) {
     const char hex_chars[] = "0123456789ABCDEF";
@@ -34,6 +36,17 @@ void trap_handler(uint64_t mcause, uint64_t mepc, uint64_t mtval) {
             /* Machine Timer Interrupt (CLINT MTIME) */
             hwtimer_ack();
             _tx_timer_interrupt();
+            return;
+        } else if (irq == 11) {
+            /* Machine External Interrupt (PLIC) */
+            uint32_t source = plic_claim();
+            if (source == MMUART1_IRQ) {
+                while (uart_has_rx()) {
+                    char c = uart_getc();
+                    console_rx_isr_callback(c);
+                }
+            }
+            plic_complete(source);
             return;
         }
     }
