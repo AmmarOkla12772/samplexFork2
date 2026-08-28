@@ -42,11 +42,28 @@ Inside the Renode monitor:
 ```renode
 include @targets/Microchip/POLARFIRE_ICICLE_RENODE/renode/polarfire_demo.resc
 ```
+This free-runs the machine so the telemetry stream can be watched live.
 
 ### Automated Headless Test Runner:
 ```bash
 python targets/Microchip/POLARFIRE_ICICLE_RENODE/scripts/test_renode.py
 ```
+The runner drives `renode/polarfire_ci.resc`, which steps through fixed
+virtual-time intervals rather than free-running, injects a byte into MMUART1 to
+exercise the PLIC external-interrupt path, and quits on its own. It asserts on
+four things and exits non-zero if any of them is missing:
+
+| Assertion | Covers |
+|---|---|
+| Startup self-tests all passed | `_sbrk()` bounds, timer catch-up, PLIC configuration |
+| ThreadX system tick advancing | CLINT machine timer and `_tx_timer_interrupt` |
+| LM75 overtemperature alarm | Queue, event flags, and the analyzer thread |
+| PLIC IRQ 91 RX interrupt delivered | MMUART1 -> PLIC -> Hart 1 machine-mode trap path |
+
+The last of these is the only check that proves the PLIC is programmed for the
+right context. Reading the controller's registers back cannot: the machine-mode
+context (1) and the supervisor-mode context (2) for Hart 1 both accept the
+writes and read back identically, but only the former ever raises `MEIP`.
 
 ### Expected Output Stream (`mmuart1` @ 115200 baud):
 ```text
@@ -54,11 +71,18 @@ python targets/Microchip/POLARFIRE_ICICLE_RENODE/scripts/test_renode.py
 Microchip PolarFire SoC Icicle Kit (Renode Target)
 64-Bit RISC-V Industrial LM75 Condition-Monitoring App
 ====================================================
-[Monitor] ThreadX Ticks: 0 | Telemetry Pipeline Active | Queues OK
-[Monitor] ThreadX Ticks: 100 | Telemetry Pipeline Active | Queues OK
-[Monitor] ThreadX Ticks: 200 | Telemetry Pipeline Active | Queues OK
-[Monitor] ThreadX Ticks: 300 | Telemetry Pipeline Active | Queues OK
-[Monitor] ThreadX Ticks: 400 | Telemetry Pipeline Active | Queues OK
-[Monitor] ThreadX Ticks: 500 | Telemetry Pipeline Active | Queues OK
+[SELF-TEST] Starting Hardware & Runtime Verification...
+[+] PASS: _sbrk() valid allocation returned base pointer
+[+] PASS: _sbrk() underflow guard rejected with EINVAL
+[+] PASS: _sbrk() overflow guard rejected with ENOMEM
+[+] PASS: HWTimer catch-up (missed deadline rebased to ..., pending deadline advanced to ...)
+[+] PASS: PLIC Hart 1 (IRQ 91 prio=1 en=0x08000000 thresh=0 mie=0x800)
+[SELF-TEST] All startup verification tests PASSED!
+
+[+] PASS: Queue 16-byte structure round-trip verified
+[Monitor] Ticks: 0 | Active Runs: Sampler=1, Analyzer=1, Reporter=1
+[Monitor] Ticks: 100 | Active Runs: Sampler=3, Analyzer=3, Reporter=2
+[Console RX] PLIC IRQ 91 handled: byte 'X' received and processed by ThreadX
+[Monitor] Ticks: 200 | Active Runs: Sampler=5, Analyzer=5, Reporter=3
 [LM75 Sensor] Temperature: OVERTEMP ALARM TRIGGERED (>45.0C)
 ```

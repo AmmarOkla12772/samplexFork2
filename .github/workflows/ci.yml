@@ -20,6 +20,7 @@ jobs:
   build-riscv-polarfire:
     name: Build PolarFire SoC Icicle Kit (64-Bit RISC-V)
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -64,6 +65,8 @@ jobs:
     name: Headless Renode Emulation & Assertion Test
     needs: build-riscv-polarfire
     runs-on: ubuntu-24.04
+    # Backstop in case Renode itself wedges before the in-script deadline fires.
+    timeout-minutes: 15
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4

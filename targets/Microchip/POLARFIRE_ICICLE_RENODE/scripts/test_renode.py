@@ -21,7 +21,9 @@ import shutil
 import threading
 import queue
 
-# Byte injected into MMUART1 to exercise the PLIC external-interrupt path.
+# Deterministic virtual-time run script. It injects RX_TEST_CHAR into MMUART1
+# itself; Renode's monitor is not on stdin, so injection has to happen there.
+RESC_NAME = "polarfire_ci.resc"
 RX_TEST_CHAR = "X"
 
 def find_renode():
@@ -54,7 +56,7 @@ def run_test(test_timeout_mode=False):
     renode = find_renode()
     script_dir = os.path.dirname(os.path.abspath(__file__))
     target_dir = os.path.dirname(script_dir)
-    resc_path = os.path.join(target_dir, "renode", "polarfire_demo.resc").replace("\\", "/")
+    resc_path = os.path.join(target_dir, "renode", RESC_NAME).replace("\\", "/")
     
     if test_timeout_mode:
         print("[*] Running intentional timeout test mode (2.0s deadline against unresponsive wait)...")
@@ -62,7 +64,7 @@ def run_test(test_timeout_mode=False):
     else:
         print(f"[*] Starting headless Renode test using: {renode}")
         print(f"[*] Loading script: {resc_path}")
-        timeout_seconds = 25.0
+        timeout_seconds = 120.0
     
     cmd = [
         renode,
@@ -91,19 +93,7 @@ def run_test(test_timeout_mode=False):
     found_ticks = False
     found_alarm = False
     found_plic_rx = False
-    injected_char = False
     start_time = time.time()
-
-    def inject_uart_byte():
-        """Deliver a byte to MMUART1 so the PLIC external-interrupt path is
-        actually exercised, rather than only having its registers inspected."""
-        try:
-            proc.stdin.write("sysbus.mmuart1 WriteChar %d\n" % ord(RX_TEST_CHAR))
-            proc.stdin.flush()
-            return True
-        except Exception as exc:
-            print("[!] Could not inject UART byte: %s" % exc)
-            return False
 
     try:
         while time.time() - start_time < timeout_seconds:
@@ -120,9 +110,6 @@ def run_test(test_timeout_mode=False):
                     found_selftests = True
                 if "Ticks:" in line:
                     found_ticks = True
-                    # The kernel is running, so the RX interrupt can be serviced.
-                    if not injected_char:
-                        injected_char = inject_uart_byte()
                 if "OVERTEMP ALARM TRIGGERED" in line:
                     found_alarm = True
                 if "PLIC IRQ 91 handled" in line:
