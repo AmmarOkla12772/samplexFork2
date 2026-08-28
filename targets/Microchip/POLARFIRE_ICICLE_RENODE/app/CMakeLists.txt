@@ -3,7 +3,7 @@
 #
 # This program and the accompanying materials are made available
 # under the terms of the MIT license which is available at
-# https://opensource.org/license/mit.
+# https://opensource.org/licenses/MIT.
 #
 # SPDX-License-Identifier: MIT
 #

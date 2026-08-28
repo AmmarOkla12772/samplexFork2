@@ -8,8 +8,8 @@ This document describes the architecture, design philosophy, directory structure
 
 The BSP framework is designed to be **additive and non-invasive**, allowing new boards to be integrated without modifying existing board implementations.
 
-1. **Legacy Isolation**: Existing boards (such as `/MXChip/AZ3166`) remain completely untouched to preserve their drivers, submodules, and build systems.
-2. **Platform-Independent Applications**: Applications under `/apps` use only the abstract BSP interfaces and have no compile-time dependency on vendor-specific HALs, SDKs, or hardware registers.
+1. **Legacy Isolation**: The board directories that predate this framework (`/MXChip`, `/OpenHW`, `/STMicroelectronics`) remain completely untouched, preserving their drivers, submodules, and build systems.
+2. **Platform-Independent Applications**: Target applications use only the abstract BSP interfaces and have no compile-time dependency on vendor-specific HALs, SDKs, or hardware registers.
 3. **Reusable Infrastructure**: Shared CMake toolchains and build utilities are centralized under `/cmake` to eliminate duplicated build configuration across supported boards.
 
 ---
@@ -18,14 +18,18 @@ The BSP framework is designed to be **additive and non-invasive**, allowing new 
 
 ```text
 samplex/ (repository root)
-├── libs/                           # Shared RTOS components (ThreadX, NetXDuo, etc.)
-├── MXChip/                         # [Legacy] Existing standalone board sample
+├── libs/                           # Shared RTOS components (ThreadX, NetX Duo, FileX, USBX)
+├── scripts/                        # Repository-wide helper scripts
+├── MXChip/                         # [Pre-framework] Standalone board sample
+├── OpenHW/                         # [Pre-framework] Standalone board sample
+├── STMicroelectronics/             # [Pre-framework] Standalone board samples
 ├── targets/                        # [Framework] Supported BSP target boards
 │   └── Microchip/
 │       └── POLARFIRE_ICICLE_RENODE/ # Board-specific BSP implementation & Renode target
 ├── bsp/                            # [Framework] Abstract BSP interface definitions
 │   └── include/bsp/                # board.h, led.h, console.h
 ├── cmake/                          # [Framework] Shared CMake configuration and utilities
+├── docs/                           # [Framework] Architecture and onboarding documentation
 └── templates/                      # [Framework] Templates for onboarding new boards
 ```
 
