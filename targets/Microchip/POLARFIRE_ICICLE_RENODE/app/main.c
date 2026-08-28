@@ -25,6 +25,13 @@
 
 extern void *_sbrk(ptrdiff_t incr);
 
+/* board_config.h derives TICK_CYCLES from BSP_TICK_RATE_HZ without seeing the
+ * ThreadX headers. This translation unit sees both, so it is where the two are
+ * checked against each other. C99 has no _Static_assert, hence the negative
+ * array size idiom. */
+typedef char bsp_tick_rate_matches_threadx[
+    (BSP_TICK_RATE_HZ == (unsigned long long)TX_TIMER_TICKS_PER_SECOND) ? 1 : -1];
+
 #define DEMO_STACK_SIZE     4096
 #define DEMO_QUEUE_ITEMS    10
 
@@ -118,25 +125,22 @@ static void run_startup_self_tests(void) {
     selftest_report(p_over == (void *)-1 && errno == ENOMEM,
                     "_sbrk() overflow guard rejected with ENOMEM");
 
-    /* 4. HWTimer catch-up clamp test.
+    /* 4. HWTimer catch-up clamp.
      *
-     * mtime is the platform-wide monotonic counter shared by every hart, so it
-     * is deliberately never written here. Only the per-hart mtimecmp is staged
-     * into the past; hwtimer_ack() must then re-arm relative to a fresh mtime
-     * read rather than to the stale comparand. mtime advances while we run, so
-     * the expected value is bracketed by mtime sampled either side of the call. */
-    uint64_t mtime_before = MTIME_REG;
-    HART1_MTIMECMP_REG = mtime_before - (TICK_CYCLES * 8ULL); /* 8 ticks behind */
-    hwtimer_ack();
-    uint64_t mtime_after = MTIME_REG;
-    uint64_t clamped_cmp = HART1_MTIMECMP_REG;
-    int clamp_ok = (clamped_cmp >= mtime_before + TICK_CYCLES) &&
-                   (clamped_cmp <= mtime_after + TICK_CYCLES);
+     * Exercised as pure arithmetic through hwtimer_next_cmp(), so no CLINT
+     * register is disturbed: mtime is the platform-wide counter shared by every
+     * hart, and mtimecmp drives the live kernel tick. Both branches are covered
+     * - a deadline still in the future advances relatively, one already missed
+     * is rebased onto the current time instead of firing continuously. */
+    uint64_t now = 5000000ULL;
+    uint64_t missed_cmp = now - (TICK_CYCLES * 8ULL);   /* 8 ticks behind */
+    uint64_t pending_cmp = now - (TICK_CYCLES / 2ULL);  /* deadline not yet due */
+    int clamp_ok = (hwtimer_next_cmp(missed_cmp, now) == now + TICK_CYCLES) &&
+                   (hwtimer_next_cmp(pending_cmp, now) == pending_cmp + TICK_CYCLES);
     snprintf(num_buf, sizeof(num_buf),
-             "HWTimer catch-up (staged 8 ticks behind -> clamped_cmp=%llu in [%llu, %llu])",
-             (unsigned long long)clamped_cmp,
-             (unsigned long long)(mtime_before + TICK_CYCLES),
-             (unsigned long long)(mtime_after + TICK_CYCLES));
+             "HWTimer catch-up (missed deadline rebased to %llu, pending deadline advanced to %llu)",
+             (unsigned long long)hwtimer_next_cmp(missed_cmp, now),
+             (unsigned long long)hwtimer_next_cmp(pending_cmp, now));
     selftest_report(clamp_ok, num_buf);
 
     /* 5. PLIC Configuration & Addressing Verification.

@@ -128,10 +128,10 @@ def run_test(test_timeout_mode=False):
                 if "PLIC IRQ 91 handled" in line:
                     found_plic_rx = True
 
-                if found_selftest_failure:
-                    print("\n[-] FAILED: a startup self-test reported a failure.")
-                    break
-                if found_selftests and found_ticks and found_alarm and found_plic_rx:
+                # A failed self-test is recorded but does not stop the run, so
+                # the remaining assertions are still reported rather than hidden.
+                if (found_selftests and not found_selftest_failure
+                        and found_ticks and found_alarm and found_plic_rx):
                     print("\n[+] SUCCESS: startup self-tests, ThreadX ticks, "
                           "LM75 alarm, and PLIC RX interrupt all verified!")
                     break
