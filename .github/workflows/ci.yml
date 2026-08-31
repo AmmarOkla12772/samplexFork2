@@ -111,10 +111,18 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Build Tools & ARM Toolchain
+      - name: Install CMake and Ninja
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+          sudo apt-get install -y cmake ninja-build
+
+      - name: Install Pinned Arm GNU Toolchain 14.2.Rel1
+        run: |
+          wget -q https://developer.arm.com/-/media/Files/downloads/gnu/14.2.rel1/binrel/arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz
+          mkdir -p $HOME/arm-gcc
+          tar -xJf arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz -C $HOME/arm-gcc --strip-components=1
+          rm arm-gnu-toolchain-14.2.rel1-x86_64-arm-none-eabi.tar.xz
+          echo "$HOME/arm-gcc/bin" >> $GITHUB_PATH
 
       - name: Build NUCLEO-F401RE Demo
         run: |
@@ -131,4 +139,3 @@ jobs:
           name: nucleo-f401re-demo-elf
           path: targets/STMicroelectronics/NUCLEO_F401RE/build/app/nucleo_f401re.elf
           retention-days: 1
-
