@@ -22,8 +22,12 @@ enable_language(ASM)
 
 set(CMAKE_C_STANDARD 11)
 
+set(SAMPLEX_ROOT_DIR
+    ${CMAKE_CURRENT_LIST_DIR}/../../..
+)
+
 set(SHARED_LIB_DIR
-    ${CMAKE_CURRENT_LIST_DIR}/../../libs
+    ${SAMPLEX_ROOT_DIR}/libs
 )
 
 list(APPEND CMAKE_MODULE_PATH

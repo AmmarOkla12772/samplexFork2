@@ -101,3 +101,34 @@ jobs:
       - name: Run Deterministic Headless Renode Test
         run: |
           python3 targets/Microchip/POLARFIRE_ICICLE_RENODE/scripts/test_renode.py
+
+  build-arm-nucleo:
+    name: Build ST Nucleo-F401RE (ARM Cortex-M4)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Build Tools & ARM Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+
+      - name: Build NUCLEO-F401RE Demo
+        run: |
+          bash targets/STMicroelectronics/NUCLEO_F401RE/scripts/build.sh --rebuild
+
+      - name: Verify NUCLEO-F401RE Demo ELF
+        run: |
+          test -f targets/STMicroelectronics/NUCLEO_F401RE/build/app/nucleo_f401re.elf
+          echo "[OK] NUCLEO-F401RE demo ELF verified."
+
+      - name: Archive Built NUCLEO-F401RE ELF
+        uses: actions/upload-artifact@v4
+        with:
+          name: nucleo-f401re-demo-elf
+          path: targets/STMicroelectronics/NUCLEO_F401RE/build/app/nucleo_f401re.elf
+          retention-days: 1
+
