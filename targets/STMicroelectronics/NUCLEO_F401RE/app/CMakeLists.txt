@@ -16,6 +16,9 @@ set(SOURCES
 
     ${COMMON_DIR}/stm32cubef4/stm32f4xx_hal_msp.c
 
+    # Newlib syscall overrides. Compiled into the executable rather than into
+    # libnucleo_bsp.a so the linker always takes these definitions instead of
+    # falling back to the libnosys stubs.
     ${CMAKE_CURRENT_SOURCE_DIR}/../lib/bsp/src/newlib_stubs.c
     ${STARTER_DIR}/main.c
 )
@@ -26,7 +29,7 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
         azrtos::threadx
         stm32cubef4
-        bsp
+        nucleo_bsp
 )
 
 target_include_directories(${PROJECT_NAME}

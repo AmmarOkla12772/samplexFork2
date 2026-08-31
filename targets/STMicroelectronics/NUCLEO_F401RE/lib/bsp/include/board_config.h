@@ -19,7 +19,12 @@
 
 #define BSP_UART_BAUDRATE       115200
 
-/* SRAM Memory Limits (STM32F401RE: 96 KB SRAM from 0x20000000 to 0x20018000) */
+/* SRAM Memory Limits (STM32F401RE: 96 KB SRAM from 0x20000000 to 0x20018000).
+ *
+ * Descriptive only. Do NOT bound the heap against BSP_RAM_END: the top of SRAM
+ * holds the main stack, and NUCLEO_F401RE.ld places the ThreadX byte pool (and
+ * therefore every thread stack) below it. _sbrk() uses the linker-provided
+ * _heap_limit symbol, which is the single source of truth for the heap extent. */
 #define BSP_RAM_START           0x20000000UL
 #define BSP_RAM_SIZE            0x00018000UL /* 96 KB */
 #define BSP_RAM_END             (BSP_RAM_START + BSP_RAM_SIZE)
